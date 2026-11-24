@@ -5,11 +5,53 @@ import { AppError, missing, forbidden, invalidState } from './errors.js';
 // 상태 변경과 이력 저장은 함께 성공하거나 함께 실패해야 합니다.
 // 승인 취소와 자동 승급은 신청 2건 + 이력 2건을 한 트랜잭션으로 처리합니다.
 export function createApplicationService(repo) {
+  const db = repo.db;
+
+  function withTransaction(work) {
+    db.exec('BEGIN IMMEDIATE');
+    try{
+      const result = work();
+      db.exec('COMMIT');
+      return result;
+    } catch (err) {
+      try { db.exec('ROLLBACK');
+
+      } catch {}
+      throw err;
+    }
+  }
+
   return {
     apply(actor,eventId) {
-      // TODO-01: 행사·학생 역할·중복 검사 → PENDING 저장 + APPLY 이력.
-      // 취소·승인 취소 기록도 중복입니다. 반환: 신청 객체.
-      throw new AppError(501,'NOT_IMPLEMENTED','TODO-01 신청과 이력 저장을 구현하세요.');
+      return withTransaction(() => {
+        const event = repo.event(eventId);
+        if(!event) throw missing('행사');
+
+        if (actor.role !=='STUDENT') throw forbidden();
+
+        if (repo.existing(eventId, actor.id)) {
+          throw new AppError(409, 'ALREADY_APPLIED', '이미 신청한 행사입니다.');
+        }
+
+        let application;
+        try {
+          application = repo.insert(eventId, actor.id);
+        } catch (err) {
+          if (String(err.message).includes('UNIQUE constraint failed')) {
+            throw new AppError(409, 'ALREADY_APPLIED', '이미 신청한 행사입니다.');
+          }
+          throw err;
+        }
+
+        repo.addHistory({
+          applicationId: application.id,
+          actorId: actor.id,
+          action: 'APPLY',
+          fromStatus: null,
+          toStatus: 'PENDING',
+        });
+        return application;
+      });
     },
     cancel(actor,applicationId) {
       // TODO-02: 본인의 PENDING만 CANCELLED로 변경 + CANCEL 이력.
