@@ -1,6 +1,6 @@
-# 과제 2 신청 승인 서비스 시작 코드
+# 캠퍼스 신청 서비스 · 웹서비스설계 과제 2
 
-신청·대기 취소·직접 승인·승인 취소·대기열 자동 승급·변경 이력을 구현합니다. 상위 폴더의 [안내문](../01_과제2_안내문.pdf)과 [API 계약](docs/API.md)을 먼저 읽으세요.
+학생이 행사에 참가를 신청하고, 담당 운영자가 정원 안에서 승인·승인 취소하는 서비스입니다. 승인 취소 시 같은 행사의 가장 먼저 대기한 1명을 자동 승인하며, 모든 상태 변경을 변경 이력으로 남깁니다. 상태·이력 규칙은 [API 계약](docs/API.md)을 따릅니다.
 
 **제출 마감: 2026년 11월 25일 23:59 (한국 시간)**
 
@@ -98,11 +98,55 @@ npm run db:reset
 - `tests/`: 기반·필수·선택 심화 테스트
 - `docs/API.md`: 상태·이력·입출력 계약
 
-## 제출 전 작성할 내용
 
-이 부분을 본인의 서비스 소개, 변경 파일, 구현 완료 여부, 실행 환경, 알려진 문제, 보고서·검증 증거 링크와 AI 사용 요약으로 바꾸세요. GitHub URL·커밋 SHA를 LMS에 제출하고 보고서 PDF를 저장소 `docs/report.pdf`와 LMS에 같은 버전으로 첨부합니다.
+## 과제 제출 정보
 
-`node_modules`, 생성 DB·서명 키, 실제 `.env`·JWT와 개인 정보는 제출하지 않습니다. 제공 코드와 직접 구현한 부분을 구분합니다.
+### 구현 완료 여부
+
+| 항목 | 상태 |
+|---|---|
+| TODO-01 `apply` 신청 + APPLY 이력 | 완료 |
+| TODO-02 `cancel` 대기 취소 + CANCEL 이력 | 완료 |
+| TODO-03 `approve` 직접 승인·정원 검사 + APPROVE 이력 | 완료 |
+| TODO-04 `revoke` 승인 취소·자동 승급 + REVOKE·AUTO_APPROVE 이력 | 완료 |
+| 모든 상태 변경과 이력 저장의 트랜잭션 처리 | 완료 |
+| 기반 테스트 `npm test` | 4 / 4 통과 |
+| 필수 테스트 `npm run test:assignment` | 32 / 32 통과 |
+| 화면 검증 U01~U05 | 5 / 5 수행 |
+| 선택 심화 `npm run test:advanced` | 미수행 |
+
+### 변경 파일
+
+- **직접 구현:** `src/application-service.js`
+  - 트랜잭션 헬퍼 `withTransaction` (`BEGIN IMMEDIATE` / `COMMIT` / `ROLLBACK`)
+  - TODO 4개 구현, 대기자 선택 SQL(`created_at ASC, id ASC`)을 서비스 안에서 실행
+- **추가:** `docs/evidence/` (테스트 결과, 화면 캡처), `docs/report.pdf` (보고서)
+- **그 외 파일:** 제공 코드를 수정하지 않았습니다. 테스트 파일도 변경하지 않았습니다.
+- 변경 내용 확인: `git diff 1eae377 -- src` (`1eae377`은 제공 코드 원본 커밋)
+
+### 실행 환경
+
+- OS: Windows 버전 26H2
+- Node.js: v24.18.0
+- npm: 11.16.0
+
+### 보고서와 검증 증거
+
+- 보고서: [docs/report.pdf](docs/report.pdf)
+- 필수 테스트 결과: [docs/evidence/T01-T32.txt](docs/evidence/T01-T32.txt)
+- 기반 테스트 결과: [docs/evidence/starter-test.txt](docs/evidence/starter-test.txt)
+- 화면 검증 캡처: [docs/evidence/test_photo/](docs/evidence/test_photo/) (U01~U05)
+
+### 알려진 문제
+
+- 선택 심화 테스트(서버 2개 동시 승인)는 수행하지 않았습니다.
+- DB의 UNIQUE 위반을 오류 메시지 문자열로 판별하므로, SQLite 메시지 형식이 바뀌면 409 대신 500이 될 수 있습니다.
+- 쓰기 잠금 대기가 5초(`busy_timeout`)를 넘으면 500으로 응답될 수 있습니다.
+
+### AI 사용 요약
+
+Claude를 사용하였습니다.
+과제 요구사항 정리, TODO 코드 구현 힌트 제공, 테스트 실패 원인 분석, 보고서 일부 작성과 작성 후 내용에 오류가 있는지 검토, README.md 작성에 활용하였습니다.
 
 ## 참고 문서
 
