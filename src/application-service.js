@@ -76,17 +76,79 @@ export function createApplicationService(repo) {
     },
 
     approve(actor,applicationId) {
-      // TODO-03: 담당자·PENDING·정원 검사 → APPROVED + APPROVE 이력.
-      // 직접 승인은 운영자가 선택합니다. FIFO는 승인 취소 때의 자동 승급에 적용합니다.
-      throw new AppError(501,'NOT_IMPLEMENTED','TODO-03 승인과 이력을 구현하세요.');
+      return withTransaction(() => {
+        const application = repo.application(applicationId);
+        if (!application) throw missing('신청');
+        
+        const event = repo.event(application.eventId);
+
+        if (actor.role !== 'MANAGER' || event.managerId !== actor.id) throw forbidden();
+
+        if(application.status !== 'PENDING') throw invalidState();
+
+        if(repo.approvedCount(event.id) >= event.capacity) {
+          throw new AppError(409, 'CAPACITY_FULL', '정원이 모두 찼습니다.');
+        }
+
+        const approved = repo.setStatus(application.id, 'APPROVED');
+
+        repo.addHistory({
+          applicationId: application.id,
+          actorId: actor.id,
+          action: 'APPROVE',
+          fromStatus: 'PENDING',
+          toStatus: 'APPROVED',
+        });
+        return approved;
+      });
     },
     revoke(actor,applicationId,reason) {
-      // TODO-04: 담당자·APPROVED 검사 → REVOKED + REVOKE 이력.
-      // 같은 행사 PENDING 중 created_at ASC, id ASC 첫 1건을 자동 승인합니다.
-      // AUTO_APPROVE 이력의 causeHistoryId는 이 요청의 REVOKE 이력 ID입니다.
-      // 상태와 이력의 부분 저장을 막고, 거부·오류 시 전체를 되돌리세요.
-      // 반환: {revoked: 신청 객체, promoted: 신청 객체 또는 null}.
-      throw new AppError(501,'NOT_IMPLEMENTED','TODO-04 승인 취소·자동 승급·이력을 구현하세요.');
+      return withTransaction(() => {
+    const application = repo.application(applicationId);
+
+    if (!application) throw missing('신청');
+
+    const event = repo.event(application.eventId);
+
+    if (actor.role !== 'MANAGER' || event.managerId !== actor.id) throw forbidden();
+
+    if (application.status !== 'APPROVED') throw invalidState();
+
+    const revoked = repo.setStatus(application.id, 'REVOKED');
+
+    const revokeHistoryId = repo.addHistory({
+      applicationId: application.id,
+      actorId: actor.id,
+      action: 'REVOKE',
+      fromStatus: 'APPROVED',
+      toStatus: 'REVOKED',
+      reason,
+    });
+
+    const next = db.prepare(`
+      SELECT id FROM applications
+      WHERE event_id = ? AND status = 'PENDING'
+      ORDER BY created_at ASC, id ASC
+      LIMIT 1
+    `).get(event.id);
+
+    let promoted = null;
+    if (next) {
+      promoted = repo.setStatus(next.id, 'APPROVED');
+      repo.addHistory({
+        applicationId: next.id,
+        actorId: actor.id,
+        action: 'AUTO_APPROVE',
+        fromStatus: 'PENDING',
+        toStatus: 'APPROVED',
+        causeHistoryId: revokeHistoryId,
+      });
     }
+
+    // 10) 반환
+    return { revoked, promoted };
+  });
+},
   };
 }
+
